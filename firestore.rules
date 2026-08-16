@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function activeUser() { return signedIn() && userDoc().data.active == true; }
+    function admin() { return activeUser() && userDoc().data.role == 'admin'; }
+    function cashier() { return activeUser() && userDoc().data.role == 'kasir'; }
+
+    match /users/{uid} {
+      allow read: if activeUser() && (admin() || request.auth.uid == uid);
+      allow create, delete: if admin();
+      allow update: if admin() && uid != request.auth.uid;
+    }
+
+    match /products/{id} {
+      allow read: if activeUser();
+      allow create, delete: if admin();
+      // Admin boleh mengubah semua field. Kasir hanya boleh mengurangi stok saat penjualan.
+      allow update: if admin() || (cashier()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock','updatedAt'])
+        && request.resource.data.stock >= 0
+        && request.resource.data.stock <= resource.data.stock);
+    }
+    match /categories/{id} {
+      allow read: if activeUser();
+      allow write: if admin();
+    }
+    match /customers/{id} {
+      allow read, create, update: if activeUser();
+      allow delete: if admin();
+    }
+    match /suppliers/{id} { allow read, write: if admin(); }
+    match /purchases/{id} { allow read, write: if admin(); }
+
+    match /sales/{id} {
+      allow read: if activeUser() && (admin() || resource.data.cashierId == request.auth.uid);
+      allow create: if activeUser()
+        && request.resource.data.cashierId == request.auth.uid
+        && request.resource.data.status == 'completed';
+      allow update: if admin();
+      allow delete: if false;
+    }
+    match /stockMovements/{id} {
+      allow read: if admin();
+      allow create: if activeUser();
+      allow update, delete: if false;
+    }
+    match /shifts/{id} {
+      allow read: if activeUser() && (admin() || resource.data.cashierId == request.auth.uid);
+      allow create: if activeUser() && request.resource.data.cashierId == request.auth.uid;
+      allow update: if activeUser() && (admin() || resource.data.cashierId == request.auth.uid);
+      allow delete: if false;
+    }
+    match /settings/{id} {
+      allow read: if activeUser();
+      allow write: if admin();
+    }
+    match /auditLogs/{id} {
+      allow read: if admin();
+      allow create: if activeUser();
+      allow update, delete: if false;
+    }
+    match /counters/{id} {
+      allow read: if activeUser();
+      allow create, update: if activeUser();
+      allow delete: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

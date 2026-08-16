@@ -1,0 +1,7 @@
+{
+  "indexes": [
+    {"collectionGroup":"sales","queryScope":"COLLECTION","fields":[{"fieldPath":"createdAt","order":"DESCENDING"}]},
+    {"collectionGroup":"shifts","queryScope":"COLLECTION","fields":[{"fieldPath":"cashierId","order":"ASCENDING"},{"fieldPath":"openedAt","order":"DESCENDING"}]}
+  ],
+  "fieldOverrides": []
+}
