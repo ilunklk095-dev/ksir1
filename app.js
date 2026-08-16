@@ -1,0 +1,32 @@
+import { db } from './firebase-config.js';
+import { setupLogin, onSession, logout, currentProfile, isAdmin } from './auth.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js';
+import { $, $$, toast, confirmDialog, setPageTitle } from './utils.js';
+import { renderDashboard } from './dashboard.js';
+import { renderPOS } from './pos.js';
+import { renderProducts } from './products.js';
+import { renderCategoriesPage } from './categories.js';
+import { renderContacts } from './contacts.js';
+import { renderInventory } from './inventory.js';
+import { renderPurchases } from './purchases.js';
+import { renderTransactions } from './transactions.js';
+import { renderShifts } from './shifts.js';
+import { renderReports } from './reports.js';
+import { renderUsers } from './users.js';
+import { renderSettings } from './settings.js';
+import { renderAudit } from './audit.js';
+
+const adminMenus=[['dashboard','Dashboard','gauge-high'],['pos','Kasir','cash-register'],['products','Produk','boxes-stacked'],['categories','Kategori','tags'],['inventory','Stok','warehouse'],['purchases','Pembelian','truck-ramp-box'],['suppliers','Supplier','truck-field'],['customers','Pelanggan','users'],['transactions','Transaksi','receipt'],['shifts','Shift Kasir','clock'],['reports','Laporan','chart-column'],['users','Pengguna','user-gear'],['audit','Audit Log','shield-halved'],['settings','Pengaturan','gear']];
+const cashierMenus=[['dashboard','Dashboard','gauge-high'],['pos','Kasir','cash-register'],['customers','Pelanggan','users'],['transactions','Transaksi','receipt'],['shifts','Shift','clock']];
+const renderers={dashboard:renderDashboard,pos:renderPOS,products:renderProducts,categories:renderCategoriesPage,inventory:renderInventory,purchases:renderPurchases,suppliers:(c)=>renderContacts(c,'suppliers'),customers:(c)=>renderContacts(c,'customers'),transactions:renderTransactions,shifts:renderShifts,reports:renderReports,users:renderUsers,audit:renderAudit,settings:renderSettings};
+let activePage='dashboard';
+setupLogin();setupTheme();setupNetwork();setupClock();setupGlobalEvents();
+onSession(async(user,profile)=>{if(!user||!profile){$('#loginView').classList.remove('hidden');$('#appView').classList.add('hidden');return}$('#loginView').classList.add('hidden');$('#appView').classList.remove('hidden');$('#userName').textContent=profile.name||profile.email;$('#userRole').textContent=profile.role||'-';$('#userAvatar').textContent=(profile.name||profile.email||'U').slice(0,1).toUpperCase();await loadStoreName();buildNav();navigate('dashboard')});
+async function loadStoreName(){try{const s=await getDoc(doc(db,'settings','store'));if(s.exists())$('#storeNameSide').textContent=s.data().name||'Kasir Pro'}catch{}}
+function buildNav(){const menus=isAdmin()?adminMenus:cashierMenus;$('#sideNav').innerHTML=menus.map(([id,label,icon])=>`<button class="nav-item" data-page="${id}"><i class="fa-solid fa-${icon}"></i><span>${label}</span></button>`).join('');$$('.nav-item').forEach(b=>b.onclick=()=>navigate(b.dataset.page));const base=isAdmin()?[['dashboard','Dashboard','gauge-high'],['pos','Kasir','cash-register'],['products','Produk','boxes-stacked'],['transactions','Transaksi','receipt'],['settings','Lainnya','ellipsis']]:[['dashboard','Dashboard','gauge-high'],['pos','Kasir','cash-register'],['customers','Pelanggan','users'],['transactions','Transaksi','receipt'],['shifts','Shift','clock']];$('#bottomNav').innerHTML=base.map(([id,label,icon])=>`<button data-page="${id}"><i class="fa-solid fa-${icon}"></i><span>${label}</span></button>`).join('');$$('#bottomNav button').forEach(b=>b.onclick=()=>navigate(b.dataset.page))}
+async function navigate(page,params={}){if(!renderers[page])page='dashboard';const adminOnly=['products','categories','inventory','purchases','suppliers','reports','users','audit','settings'];if(adminOnly.includes(page)&&!isAdmin()){toast('Menu ini hanya untuk Admin.','error');page='dashboard'}activePage=page;$$('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$('#sidebar').classList.remove('open');const c=$('#pageContent');c.innerHTML='<div class="card">Memuat...</div>';try{await renderers[page](c,params)}catch(e){console.error(e);c.innerHTML=`<div class="card"><h3>Gagal memuat halaman</h3><p class="muted"></p></div>`;c.querySelector('p').textContent=e.message;toast('Terjadi kesalahan: '+e.message,'error',6000)}}
+function setupGlobalEvents(){$('#mobileMenuBtn').onclick=()=>$('#sidebar').classList.toggle('open');$('#logoutBtn').onclick=async()=>{if(await confirmDialog('Keluar dari aplikasi?','Sesi Firebase Anda akan diakhiri.','Keluar'))await logout()};window.addEventListener('navigate',e=>navigate(e.detail.page,e.detail||{}));document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelector('[data-close-modal]')?.click();return}if(e.target.matches('input,textarea,select')){if(e.key!=='F2'&&e.key!=='F4'&&e.key!=='F8')return}if(e.key==='F2'){e.preventDefault();document.querySelector('#posSearch')?.focus()}if(e.key==='F4'){e.preventDefault();document.querySelector('#payBtn')?.click()}if(e.key==='F8'){e.preventDefault();document.querySelector('#scanBtn')?.click()}})}
+function setupTheme(){const saved=localStorage.getItem('kasir-theme')||'light';document.body.classList.toggle('dark',saved==='dark');const sync=()=>{$('#themeToggle i').className=`fa-regular fa-${document.body.classList.contains('dark')?'sun':'moon'}`};$('#themeToggle').onclick=()=>{document.body.classList.toggle('dark');localStorage.setItem('kasir-theme',document.body.classList.contains('dark')?'dark':'light');sync()};sync()}
+function setupNetwork(){const update=()=>{const el=$('#networkStatus');el.className=`network ${navigator.onLine?'online':'offline'}`;el.innerHTML=`<i class="fa-solid fa-circle"></i> ${navigator.onLine?'Online':'Offline'}`;if(!navigator.onLine)toast('Perangkat offline. Transaksi Firestore transaction tidak dapat diselesaikan sampai koneksi kembali.','warning',6000)};window.addEventListener('online',update);window.addEventListener('offline',update);update()}
+function setupClock(){setInterval(()=>{$('#clockText').textContent=new Date().toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'})},1000)}
+if('serviceWorker'in navigator&&location.protocol==='https:')window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.warn));
